@@ -5,8 +5,10 @@ import (
 	"log"
 	"flag"
 	"bytes"
+	"os/exec"
 	"strings"
 	"io/ioutil"
+	"encoding/json"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -17,6 +19,10 @@ var command string
 var keyPath string
 var keyPass string
 
+type Data struct {
+	Commands []string `json:"commands"`
+}
+
 func init() {
 	flag.StringVar(&host, "host", "", "SSH hostname or IP")
 	flag.StringVar(&port, "port", "22", "SSH Port")
@@ -25,9 +31,9 @@ func init() {
 	flag.StringVar(&keyPath, "key-path", "", "For example: ~/.ssh/id_rsa")
 	flag.StringVar(&keyPass, "key-pass", "", "Password for private key optional")
 	flag.Parse()
-	if host == "" || command == "" || username == "" || keyPath == "" {
+	if host == "" || username == "" || keyPath == "" {
 		flag.PrintDefaults()
-		os.Exit(2)
+		log.Fatalf("Input not correct")
 	}
 }
 
@@ -35,17 +41,72 @@ func readPubKey(file string) ssh.AuthMethod {
 	var key ssh.Signer
 	var err error
 	var b []byte
-	var keyPass string = "elk"
 	b, err = ioutil.ReadFile(file)
-	mustExec(err, "Failed to read pulic key")
+	if err != nil {
+		log.Fatalf("Failed to read pulic key: %s", err)
+	}
 	if !strings.Contains(string(b), "ENCRYPTED") {
 		key, err = ssh.ParsePrivateKey(b)
-		mustExec(err, "Failed to parse public key")
+		if err != nil {
+			log.Fatalf("Failed to parse public key: %s", err)
+		}
 	} else {
 		key, err = ssh.ParsePrivateKeyWithPassphrase(b, []byte(keyPass))
-		mustExec(err, "Failed to parse password-protected key")
+		if err != nil {
+			log.Fatalf("Failed to parse password-protected key: %s", err)
+		}
 	}
 	return ssh.PublicKeys(key)
+}
+
+func connectToServer(config *ssh.ClientConfig) (*ssh.Client) {
+	client, err := ssh.Dial("tcp", strings.Join([]string{host, ":", port}, ""), config)
+	if err != nil {
+		log.Fatalf("%s: %s\n %s", "Failed to log into the server", host, err)
+	}
+	log.Printf("Connection successfully established with host: %s", host)
+	return client
+}
+
+func runCommands(client *ssh.Client) {
+	content, err := ioutil.ReadFile("./commands.json")
+	if err != nil {
+		log.Fatalf("Error when opening file: %s", err)
+	}
+
+	var payload Data
+	err = json.Unmarshal(content, &payload)
+	if err != nil {
+		log.Fatalf("Error getting commands: %s", err)
+	}
+
+	// log.Printf("%v", payload.Commands)
+
+	for _, element := range payload.Commands {
+		command := strings.ToLower(element)
+		// Executing one command per session
+		session, err := client.NewSession()
+		if err != nil {
+			log.Fatalf("Failed to create session: %s", err)
+		}
+
+		defer session.Close()
+
+		var b bytes.Buffer
+		session.Stdout = &b
+		err = session.Run(command)
+		if err != nil {
+			log.Printf("You used an invalid command")
+			err = nil
+		}
+		log.Printf("Executing command: %s", command)
+		log.Printf("Response from server:\n%s", b.String())
+	}
+	//clear the terminal and display conn closed
+	clear := exec.Command("clear")
+	clear.Stdout = os.Stdout
+	clear.Run()
+	log.Printf("\nDisconnected from Host %s", host)
 }
 
 func main() {
@@ -56,25 +117,6 @@ func main() {
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	client, err := ssh.Dial("tcp", strings.Join([]string{host, ":", port}, ""), conf)
-	mustExec(err, "Failed to create SSH server!")
-	session, err := client.NewSession()
-	mustExec(err, "Failed to create SSH session!")
-	defer session.Close()
-	var b bytes.Buffer
-	session.Stdout = &b
-	err = session.Run(command)
-	if err != nil {
-		log.Fatalf("%s:\n  %s", "Failed to run command over SSH!", err)
-	} else {
-		log.Print("Successfully logged into server", host)
-		log.Printf("Executing command: %s", command)
-		log.Printf("Response from server: %s", b.String())
-	}
-}
-
-func mustExec(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s:\n  %s", msg, err)
-	}
+	client := connectToServer(conf)
+	runCommands(client)
 }
