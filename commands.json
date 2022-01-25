@@ -1,0 +1,7 @@
+{
+    "commands": [
+        "pwd",
+        "ls /",
+        "date"
+    ]
+}
