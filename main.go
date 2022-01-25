@@ -19,13 +19,13 @@ var keyPass string
 
 func init() {
 	flag.StringVar(&host, "host", "", "SSH hostname or IP")
-	flag.StringVar(&port, "port", "", "SSH Port")
+	flag.StringVar(&port, "port", "22", "SSH Port")
 	flag.StringVar(&username, "username", "", "SSH username")
 	flag.StringVar(&command, "command", "", "Command to be executed")
 	flag.StringVar(&keyPath, "key-path", "", "For example: ~/.ssh/id_rsa")
 	flag.StringVar(&keyPass, "key-pass", "", "Password for private key optional")
 	flag.Parse()
-	if host == "" || port == "" || command == "" || username == "" || keyPath == "" {
+	if host == "" || command == "" || username == "" || keyPath == "" {
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
@@ -64,8 +64,13 @@ func main() {
 	var b bytes.Buffer
 	session.Stdout = &b
 	err = session.Run(command)
-	mustExec(err, "Failed to run command over SSH!")
-	log.Printf("%s: %s", command, b.String())
+	if err != nil {
+		log.Fatalf("%s:\n  %s", "Failed to run command over SSH!", err)
+	} else {
+		log.Print("Successfully logged into server", host)
+		log.Printf("Executing command: %s", command)
+		log.Printf("Response from server: %s", b.String())
+	}
 }
 
 func mustExec(err error, msg string) {
