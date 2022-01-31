@@ -23,6 +23,16 @@ type Data struct {
 	Commands []string `json:"commands"`
 }
 
+type Host struct {
+	IP          string `json:"ip"`
+	User        string `json:"user"`
+	AuthKeyPath string `json:"auth_key_path,omitempty"`
+	Password    string `json:"password,omitempty"`
+	AuthKeyPass string `json:"auth_key_pass,omitempty"`
+}
+
+type Hosts []Host
+
 func init() {
 	flag.StringVar(&host, "host", "", "SSH hostname or IP")
 	flag.StringVar(&port, "port", "22", "SSH Port")
