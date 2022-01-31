@@ -77,6 +77,7 @@ func readHostsFromJSON(filename string) ([]Host) {
 }
 
 func main() {
+	// Call when a JSON file needs to be created contianing the host details
 	hosts := readHostsFromFile(hostsFile)
 
 	objs, err := json.MarshalIndent(hosts, "", "  ")
@@ -91,6 +92,7 @@ func main() {
 		panic(err)
 	}
 
+	// Call when reading from the generated JSON file
 	hostIPs := readHostsFromJSON(outputFile)
 	fmt.Printf("%s", hostIPs)
 }
