@@ -2,9 +2,9 @@ package main
 
 import (
 	"os"
+	"fmt"
 	"log"
 	"flag"
-	"bytes"
 	"os/exec"
 	"strings"
 	"io/ioutil"
@@ -18,6 +18,11 @@ var username string
 var command string
 var keyPath string
 var keyPass string
+
+type SSHClient struct {
+	Conn *ssh.Client
+	Server string
+}
 
 type Data struct {
 	Commands []string `json:"commands"`
@@ -71,6 +76,7 @@ func readPubKey(file string) ssh.AuthMethod {
 
 func connectToServer(config *ssh.ClientConfig) (*ssh.Client) {
 	client, err := ssh.Dial("tcp", strings.Join([]string{host, ":", port}, ""), config)
+	fmt.Printf("%T", client)
 	if err != nil {
 		log.Fatalf("%s: %s\n %s", "Failed to log into the server", host, err)
 	}
@@ -78,7 +84,13 @@ func connectToServer(config *ssh.ClientConfig) (*ssh.Client) {
 	return client
 }
 
-func runCommands(client *ssh.Client) {
+func runCommands(conf *ssh.ClientConfig) {
+	client := connectToServer(conf)
+	defer client.Close()
+	conn := &SSHClient{
+		Conn: client,
+		Server: fmt.Sprintf("%v:%v", host, port),
+	}
 	content, err := ioutil.ReadFile("./commands.json")
 	if err != nil {
 		log.Fatalf("Error when opening file: %s", err)
@@ -90,33 +102,37 @@ func runCommands(client *ssh.Client) {
 		log.Fatalf("Error getting commands: %s", err)
 	}
 
-	// log.Printf("%v", payload.Commands)
-
 	for _, element := range payload.Commands {
 		command := strings.ToLower(element)
-		// Executing one command per session
-		session, err := client.NewSession()
-		if err != nil {
-			log.Fatalf("Failed to create session: %s", err)
-		}
 
-		defer session.Close()
+		// Executing command
 
-		var b bytes.Buffer
-		session.Stdout = &b
-		err = session.Run(command)
+		output, err := conn.RunCommand(command)
 		if err != nil {
-			log.Printf("You used an invalid command")
-			err = nil
+			log.Printf("SSH run command error %v", err)
 		}
 		log.Printf("Executing command: %s", command)
-		log.Printf("Response from server:\n%s", b.String())
+		log.Printf("Response from server:\n%s", output)
 	}
 	//clear the terminal and display conn closed
 	clear := exec.Command("clear")
 	clear.Stdout = os.Stdout
 	clear.Run()
 	log.Printf("\nDisconnected from Host %s", host)
+}
+
+func (s *SSHClient) RunCommand(cmd string) (string, error) {
+	// Open session
+	session, err := s.Conn.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("Failed to create session for server %v %v", s.Server, err)
+	}
+
+	defer session.Close()
+
+	// Run command and capture stderr/stdout
+	output, err := session.CombinedOutput(cmd)
+	return fmt.Sprintf("%s", output), err
 }
 
 func main() {
@@ -127,6 +143,6 @@ func main() {
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
-	client := connectToServer(conf)
-	runCommands(client)
+	
+	runCommands(conf)
 }
