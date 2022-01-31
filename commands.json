@@ -1,7 +1,7 @@
 {
     "commands": [
         "pwd",
-        "ls /",
+        "whoami",
         "date"
     ]
 }
